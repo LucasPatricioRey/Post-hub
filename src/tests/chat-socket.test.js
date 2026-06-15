@@ -1,22 +1,18 @@
 const http = require("http");
-const request = require("supertest");
+const { expect } = require("chai");
 const { io: Client } = require("socket.io-client");
 
 const app = require("../app");
 const configureSockets = require("../sockets");
 const ChatMessage = require("../models/ChatMessage");
 
+const {
+  registerUser,
+} = require("./helpers/api");
+
 let httpServer;
 let ioServer;
 let clientSocket;
-
-const crearUsuarioYObtenerToken = async (datosUsuario) => {
-  const response = await request(app)
-    .post("/api/auth/register")
-    .send(datosUsuario);
-
-  return response.body.token;
-};
 
 const getServerUrl = () => {
   const address = httpServer.address();
@@ -84,39 +80,43 @@ const waitForConnectionError = (socket) => {
   });
 };
 
-beforeEach((done) => {
-  httpServer = http.createServer(app);
-  ioServer = configureSockets(httpServer);
+describe("Chat por WebSocket", function () {
+  beforeEach(function (done) {
+    httpServer = http.createServer(app);
+    ioServer = configureSockets(httpServer);
 
-  httpServer.listen(() => {
-    done();
+    httpServer.listen(() => {
+      done();
+    });
   });
-});
 
-afterEach((done) => {
-  if (clientSocket) {
-    clientSocket.disconnect();
-    clientSocket = null;
-  }
+  afterEach(async function () {
+    if (clientSocket) {
+      clientSocket.disconnect();
+      clientSocket = null;
+    }
 
-  if (ioServer) {
-    ioServer.close();
-    ioServer = null;
-  }
+    if (ioServer) {
+      await new Promise((resolve) => {
+        ioServer.close(() => resolve());
+      });
 
-  if (httpServer && httpServer.listening) {
-    httpServer.close(done);
-  } else {
-    done();
-  }
-});
+      ioServer = null;
+    }
 
-describe("Chat por WebSocket", () => {
-  test("debe permitir que un usuario autenticado envíe un mensaje de chat", async () => {
-    const token = await crearUsuarioYObtenerToken({
+    if (httpServer && httpServer.listening) {
+      await new Promise((resolve) => {
+        httpServer.close(() => resolve());
+      });
+    }
+
+    httpServer = null;
+  });
+
+  it("debe permitir que un usuario autenticado envíe un mensaje de chat", async function () {
+    const { token } = await registerUser({
       nombre: "Usuario Socket",
       email: "socket@test.com",
-      password: "123456",
     });
 
     clientSocket = await connectSocketWithToken(token);
@@ -132,25 +132,21 @@ describe("Chat por WebSocket", () => {
 
     const newMessage = await newMessagePromise;
 
-    expect(newMessage).toHaveProperty("contenido", "Hola desde Socket.IO");
-    expect(newMessage).toHaveProperty("nombreAutor", "Usuario Socket");
-    expect(newMessage).toHaveProperty("autor");
-    expect(newMessage.autor).toHaveProperty("email", "socket@test.com");
+    expect(newMessage).to.have.property("contenido", "Hola desde Socket.IO");
+    expect(newMessage).to.have.property("nombreAutor", "Usuario Socket");
+    expect(newMessage).to.have.property("autor");
+    expect(newMessage.autor).to.have.property("email", "socket@test.com");
 
     const messagesInDB = await ChatMessage.find();
 
-    expect(messagesInDB.length).toBe(1);
-    expect(messagesInDB[0]).toHaveProperty(
-      "contenido",
-      "Hola desde Socket.IO"
-    );
+    expect(messagesInDB).to.have.lengthOf(1);
+    expect(messagesInDB[0].contenido).to.equal("Hola desde Socket.IO");
   });
 
-  test("debe rechazar mensajes vacíos", async () => {
-    const token = await crearUsuarioYObtenerToken({
+  it("debe rechazar mensajes vacíos", async function () {
+    const { token } = await registerUser({
       nombre: "Usuario Mensaje Vacio",
       email: "vacio@test.com",
-      password: "123456",
     });
 
     clientSocket = await connectSocketWithToken(token);
@@ -163,14 +159,14 @@ describe("Chat por WebSocket", () => {
 
     const error = await errorPromise;
 
-    expect(error).toHaveProperty("message", "El mensaje no puede estar vacío");
+    expect(error).to.have.property("message", "El mensaje no puede estar vacío");
 
     const totalMessages = await ChatMessage.countDocuments();
 
-    expect(totalMessages).toBe(0);
+    expect(totalMessages).to.equal(0);
   });
 
-  test("debe rechazar la conexión si no se envía token", async () => {
+  it("debe rechazar la conexión si no se envía token", async function () {
     const socketSinToken = Client(getServerUrl(), {
       transports: ["websocket"],
       forceNew: true,
@@ -179,7 +175,7 @@ describe("Chat por WebSocket", () => {
 
     const error = await waitForConnectionError(socketSinToken);
 
-    expect(error.message).toBe("No autorizado, falta token");
+    expect(error.message).to.equal("No autorizado, falta token");
 
     socketSinToken.disconnect();
   });

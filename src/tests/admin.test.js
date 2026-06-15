@@ -1,163 +1,95 @@
 const request = require("supertest");
+const { expect } = require("chai");
+
 const app = require("../app");
-const User = require("../models/User");
-const generateToken = require("../utils/generateToken");
 
-const crearUsuarioYObtenerToken = async (datosUsuario) => {
-  const response = await request(app)
-    .post("/api/auth/register")
-    .send(datosUsuario);
+const {
+  registerUser,
+  createAdminAndToken,
+  createPost,
+  createComment,
+} = require("./helpers/api");
 
-  return response.body.token;
-};
-
-const crearAdminYObtenerToken = async () => {
-  const admin = await User.create({
-    nombre: "Admin Panel",
-    email: "admin-panel@test.com",
-    password: "123456",
-    rol: "admin",
-  });
-
-  return generateToken(admin._id);
-};
-
-const crearPostYObtenerId = async (token) => {
-  const response = await request(app)
-    .post("/api/posts")
-    .set("Authorization", `Bearer ${token}`)
-    .send({
-      titulo: "Posteo para panel admin",
-      contenido: "Este posteo se usa para probar el panel de administración.",
-    });
-
-  return response.body.post._id;
-};
-
-const crearComentario = async (token, postId) => {
-  const response = await request(app)
-    .post(`/api/posts/${postId}/comments`)
-    .set("Authorization", `Bearer ${token}`)
-    .send({
-      contenido: "Comentario para panel admin.",
-    });
-
-  return response.body.comment;
-};
-
-describe("Admin endpoints", () => {
-  test("GET /api/admin/stats debe bloquear acceso sin token", async () => {
+describe("Admin endpoints", function () {
+  it("GET /api/admin/stats debe bloquear acceso sin token", async function () {
     const response = await request(app).get("/api/admin/stats");
 
-    expect(response.statusCode).toBe(401);
-    expect(response.body).toHaveProperty("message");
+    expect(response.status).to.equal(401);
+    expect(response.body).to.have.property("message");
   });
 
-  test("GET /api/admin/stats debe bloquear acceso a usuario común", async () => {
-    const tokenUsuario = await crearUsuarioYObtenerToken({
-      nombre: "Usuario Comun Admin",
-      email: "usuario-comun-admin@test.com",
-      password: "123456",
-    });
+  it("GET /api/admin/stats debe bloquear acceso a usuario común", async function () {
+    const { token } = await registerUser();
 
     const response = await request(app)
       .get("/api/admin/stats")
-      .set("Authorization", `Bearer ${tokenUsuario}`);
+      .set("Authorization", `Bearer ${token}`);
 
-    expect(response.statusCode).toBe(403);
-    expect(response.body).toHaveProperty("message");
+    expect(response.status).to.equal(403);
+    expect(response.body).to.have.property("message");
   });
 
-  test("GET /api/admin/stats debe devolver estadísticas si el usuario es admin", async () => {
-    const tokenUsuario = await crearUsuarioYObtenerToken({
-      nombre: "Usuario Estadisticas",
-      email: "usuario-estadisticas@test.com",
-      password: "123456",
-    });
+  it("GET /api/admin/stats debe devolver estadísticas si el usuario es admin", async function () {
+    const { token: tokenUsuario } = await registerUser();
 
-    const tokenAdmin = await crearAdminYObtenerToken();
+    const { token: tokenAdmin } = await createAdminAndToken();
 
-    const postId = await crearPostYObtenerId(tokenUsuario);
-
-    await crearComentario(tokenUsuario, postId);
+    const { post } = await createPost(tokenUsuario);
+    await createComment(tokenUsuario, post._id);
 
     const response = await request(app)
       .get("/api/admin/stats")
       .set("Authorization", `Bearer ${tokenAdmin}`);
 
-    expect(response.statusCode).toBe(200);
+    expect(response.status).to.equal(200);
+    expect(response.body).to.have.property("stats");
 
-    expect(response.body).toHaveProperty("message");
-    expect(response.body).toHaveProperty("stats");
-
-    expect(response.body.stats).toHaveProperty("totalUsuarios", 2);
-    expect(response.body.stats).toHaveProperty("totalPosteos", 1);
-    expect(response.body.stats).toHaveProperty("totalComentarios", 1);
-
-    expect(Array.isArray(response.body.stats.posteosPorUsuario)).toBe(true);
-    expect(response.body.stats.posteosPorUsuario.length).toBe(1);
+    expect(response.body.stats.totalUsuarios).to.equal(2);
+    expect(response.body.stats.totalPosteos).to.equal(1);
+    expect(response.body.stats.totalComentarios).to.equal(1);
+    expect(response.body.stats.posteosPorUsuario).to.be.an("array");
+    expect(response.body.stats.posteosPorUsuario).to.have.lengthOf(1);
   });
 
-  test("GET /api/admin/posts debe listar posteos para moderación si el usuario es admin", async () => {
-    const tokenUsuario = await crearUsuarioYObtenerToken({
-      nombre: "Usuario Post Moderacion",
-      email: "usuario-post-moderacion@test.com",
-      password: "123456",
+  it("GET /api/admin/posts debe listar posteos para moderación si el usuario es admin", async function () {
+    const { token: tokenUsuario } = await registerUser();
+
+    const { token: tokenAdmin } = await createAdminAndToken();
+
+    await createPost(tokenUsuario, {
+      titulo: "Posteo para panel admin",
+      contenido: "Este posteo se usa para probar el panel de administración.",
     });
-
-    const tokenAdmin = await crearAdminYObtenerToken();
-
-    await crearPostYObtenerId(tokenUsuario);
 
     const response = await request(app)
       .get("/api/admin/posts")
       .set("Authorization", `Bearer ${tokenAdmin}`);
 
-    expect(response.statusCode).toBe(200);
-
-    expect(response.body).toHaveProperty("message");
-    expect(response.body).toHaveProperty("total", 1);
-    expect(response.body).toHaveProperty("posts");
-
-    expect(Array.isArray(response.body.posts)).toBe(true);
-    expect(response.body.posts.length).toBe(1);
-    expect(response.body.posts[0]).toHaveProperty(
-      "titulo",
-      "Posteo para panel admin"
-    );
-    expect(response.body.posts[0]).toHaveProperty("autor");
+    expect(response.status).to.equal(200);
+    expect(response.body.total).to.equal(1);
+    expect(response.body.posts).to.be.an("array");
+    expect(response.body.posts).to.have.lengthOf(1);
+    expect(response.body.posts[0].titulo).to.equal("Posteo para panel admin");
   });
 
-  test("GET /api/admin/comments debe listar comentarios para moderación si el usuario es admin", async () => {
-    const tokenUsuario = await crearUsuarioYObtenerToken({
-      nombre: "Usuario Comment Moderacion",
-      email: "usuario-comment-moderacion@test.com",
-      password: "123456",
+  it("GET /api/admin/comments debe listar comentarios para moderación si el usuario es admin", async function () {
+    const { token: tokenUsuario } = await registerUser();
+
+    const { token: tokenAdmin } = await createAdminAndToken();
+
+    const { post } = await createPost(tokenUsuario);
+    await createComment(tokenUsuario, post._id, {
+      contenido: "Comentario para panel admin.",
     });
-
-    const tokenAdmin = await crearAdminYObtenerToken();
-
-    const postId = await crearPostYObtenerId(tokenUsuario);
-
-    await crearComentario(tokenUsuario, postId);
 
     const response = await request(app)
       .get("/api/admin/comments")
       .set("Authorization", `Bearer ${tokenAdmin}`);
 
-    expect(response.statusCode).toBe(200);
-
-    expect(response.body).toHaveProperty("message");
-    expect(response.body).toHaveProperty("total", 1);
-    expect(response.body).toHaveProperty("comments");
-
-    expect(Array.isArray(response.body.comments)).toBe(true);
-    expect(response.body.comments.length).toBe(1);
-    expect(response.body.comments[0]).toHaveProperty(
-      "contenido",
-      "Comentario para panel admin."
-    );
-    expect(response.body.comments[0]).toHaveProperty("autor");
-    expect(response.body.comments[0]).toHaveProperty("post");
+    expect(response.status).to.equal(200);
+    expect(response.body.total).to.equal(1);
+    expect(response.body.comments).to.be.an("array");
+    expect(response.body.comments).to.have.lengthOf(1);
+    expect(response.body.comments[0].contenido).to.equal("Comentario para panel admin.");
   });
 });

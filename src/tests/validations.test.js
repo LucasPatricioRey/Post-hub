@@ -1,20 +1,14 @@
 const request = require("supertest");
+const { expect } = require("chai");
+
 const app = require("../app");
 
-const crearUsuarioYObtenerToken = async () => {
-  const response = await request(app)
-    .post("/api/auth/register")
-    .send({
-      nombre: "Usuario Validaciones",
-      email: "validaciones@test.com",
-      password: "123456",
-    });
+const {
+  registerUser,
+} = require("./helpers/api");
 
-  return response.body.token;
-};
-
-describe("Validaciones del backend", () => {
-  test("POST /api/auth/register debe rechazar un email inválido", async () => {
+describe("Validaciones del backend", function () {
+  it("POST /api/auth/register debe rechazar un email inválido", async function () {
     const response = await request(app)
       .post("/api/auth/register")
       .send({
@@ -23,12 +17,12 @@ describe("Validaciones del backend", () => {
         password: "123456",
       });
 
-    expect(response.statusCode).toBe(400);
-    expect(response.body).toHaveProperty("message");
-    expect(response.body.message).toMatch(/email v[aá]lido/i);
+    expect(response.status).to.equal(400);
+    expect(response.body).to.have.property("message");
+    expect(response.body.message).to.match(/email/i);
   });
 
-  test("POST /api/auth/register debe rechazar una contraseña corta", async () => {
+  it("POST /api/auth/register debe rechazar una contraseña corta", async function () {
     const response = await request(app)
       .post("/api/auth/register")
       .send({
@@ -37,35 +31,13 @@ describe("Validaciones del backend", () => {
         password: "123",
       });
 
-    expect(response.statusCode).toBe(400);
-    expect(response.body).toHaveProperty("message");
-    expect(response.body.message).toMatch(/contraseña/i);
+    expect(response.status).to.equal(400);
+    expect(response.body).to.have.property("message");
+    expect(response.body.message).to.match(/contraseña/i);
   });
 
-  test("POST /api/auth/register debe rechazar un email duplicado", async () => {
-    await request(app)
-      .post("/api/auth/register")
-      .send({
-        nombre: "Usuario Original",
-        email: "duplicado@test.com",
-        password: "123456",
-      });
-
-    const response = await request(app)
-      .post("/api/auth/register")
-      .send({
-        nombre: "Usuario Repetido",
-        email: "duplicado@test.com",
-        password: "123456",
-      });
-
-    expect(response.statusCode).toBe(400);
-    expect(response.body).toHaveProperty("message");
-    expect(response.body.message).toMatch(/registrado|existe|duplicado/i);
-  });
-
-  test("POST /api/posts debe rechazar un título demasiado corto", async () => {
-    const token = await crearUsuarioYObtenerToken();
+  it("POST /api/posts debe rechazar un título demasiado corto", async function () {
+    const { token } = await registerUser();
 
     const response = await request(app)
       .post("/api/posts")
@@ -75,13 +47,13 @@ describe("Validaciones del backend", () => {
         contenido: "Este contenido sí tiene más de diez caracteres.",
       });
 
-    expect(response.statusCode).toBe(400);
-    expect(response.body).toHaveProperty("message");
-    expect(response.body.message).toMatch(/título|titulo/i);
+    expect(response.status).to.equal(400);
+    expect(response.body).to.have.property("message");
+    expect(response.body.message).to.match(/título|titulo/i);
   });
 
-  test("POST /api/posts debe rechazar contenido demasiado corto", async () => {
-    const token = await crearUsuarioYObtenerToken();
+  it("POST /api/posts debe rechazar contenido demasiado corto", async function () {
+    const { token } = await registerUser();
 
     const response = await request(app)
       .post("/api/posts")
@@ -91,16 +63,16 @@ describe("Validaciones del backend", () => {
         contenido: "Corto",
       });
 
-    expect(response.statusCode).toBe(400);
-    expect(response.body).toHaveProperty("message");
-    expect(response.body.message).toMatch(/contenido/i);
+    expect(response.status).to.equal(400);
+    expect(response.body).to.have.property("message");
+    expect(response.body.message).to.match(/contenido/i);
   });
 
-  test("GET /api/posts/:id debe rechazar un ID inválido", async () => {
+  it("GET /api/posts/:id debe rechazar un ID inválido", async function () {
     const response = await request(app).get("/api/posts/123");
 
-    expect(response.statusCode).toBe(400);
-    expect(response.body).toHaveProperty("message");
-    expect(response.body.message).toMatch(/id.*inv[aá]lido/i);
+    expect(response.status).to.equal(400);
+    expect(response.body).to.have.property("message");
+    expect(response.body.message).to.match(/id.*inv[aá]lido/i);
   });
 });

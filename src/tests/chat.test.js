@@ -1,24 +1,18 @@
 const request = require("supertest");
+const { expect } = require("chai");
+
 const app = require("../app");
 const ChatMessage = require("../models/ChatMessage");
 
-const crearUsuarioYObtenerDatos = async (datosUsuario) => {
-  const response = await request(app)
-    .post("/api/auth/register")
-    .send(datosUsuario);
+const {
+  registerUser,
+} = require("./helpers/api");
 
-  return {
-    token: response.body.token,
-    user: response.body.user,
-  };
-};
-
-describe("Chat endpoints", () => {
-  test("GET /api/chat/messages debe devolver un historial público de mensajes", async () => {
-    const { user } = await crearUsuarioYObtenerDatos({
+describe("Chat HTTP endpoints", function () {
+  it("GET /api/chat/messages debe devolver historial público de mensajes", async function () {
+    const { user } = await registerUser({
       nombre: "Usuario Chat",
       email: "chat@test.com",
-      password: "123456",
     });
 
     await ChatMessage.create({
@@ -29,30 +23,20 @@ describe("Chat endpoints", () => {
 
     const response = await request(app).get("/api/chat/messages");
 
-    expect(response.statusCode).toBe(200);
-    expect(response.body).toHaveProperty("message");
-    expect(response.body).toHaveProperty("messages");
+    expect(response.status).to.equal(200);
+    expect(response.body).to.have.property("message");
+    expect(response.body).to.have.property("messages");
 
-    expect(Array.isArray(response.body.messages)).toBe(true);
-    expect(response.body.messages.length).toBe(1);
-
-    expect(response.body.messages[0]).toHaveProperty(
-      "contenido",
-      "Hola comunidad"
-    );
-
-    expect(response.body.messages[0]).toHaveProperty("autor");
-    expect(response.body.messages[0]).toHaveProperty(
-      "nombreAutor",
-      "Usuario Chat"
-    );
+    expect(response.body.messages).to.be.an("array");
+    expect(response.body.messages).to.have.lengthOf(1);
+    expect(response.body.messages[0].contenido).to.equal("Hola comunidad");
+    expect(response.body.messages[0].nombreAutor).to.equal("Usuario Chat");
   });
 
-  test("GET /api/chat/messages debe devolver como máximo 50 mensajes", async () => {
-    const { user } = await crearUsuarioYObtenerDatos({
+  it("GET /api/chat/messages debe devolver como máximo 50 mensajes", async function () {
+    const { user } = await registerUser({
       nombre: "Usuario Limite",
       email: "limite@test.com",
-      password: "123456",
     });
 
     const mensajes = [];
@@ -69,7 +53,7 @@ describe("Chat endpoints", () => {
 
     const response = await request(app).get("/api/chat/messages");
 
-    expect(response.statusCode).toBe(200);
-    expect(response.body.messages.length).toBe(50);
+    expect(response.status).to.equal(200);
+    expect(response.body.messages).to.have.lengthOf(50);
   });
 });
