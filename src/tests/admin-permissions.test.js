@@ -1,196 +1,151 @@
 const request = require("supertest");
+const { expect } = require("chai");
+
 const app = require("../app");
-const User = require("../models/User");
 const Comment = require("../models/Comment");
-const generateToken = require("../utils/generateToken");
 
-const crearUsuarioYObtenerToken = async (datosUsuario) => {
-  const response = await request(app)
-    .post("/api/auth/register")
-    .send(datosUsuario);
+const {
+  registerUser,
+  createAdminAndToken,
+  createPost,
+  createComment,
+} = require("./helpers/api");
 
-  return response.body.token;
-};
-
-const crearAdminYObtenerToken = async () => {
-  const admin = await User.create({
-    nombre: "Admin Permisos",
-    email: "admin-permisos@test.com",
-    password: "123456",
-    rol: "admin",
-  });
-
-  return generateToken(admin._id);
-};
-
-const crearPostYObtenerId = async (token, datosPost = {}) => {
-  const response = await request(app)
-    .post("/api/posts")
-    .set("Authorization", `Bearer ${token}`)
-    .send({
-      titulo: datosPost.titulo || "Posteo para permisos admin",
-      contenido:
-        datosPost.contenido ||
-        "Este posteo se usa para probar permisos de administrador.",
-    });
-
-  return response.body.post._id;
-};
-
-const crearComentario = async (
-  token,
-  postId,
-  contenido = "Comentario asociado al posteo."
-) => {
-  const response = await request(app)
-    .post(`/api/posts/${postId}/comments`)
-    .set("Authorization", `Bearer ${token}`)
-    .send({
-      contenido,
-    });
-
-  return response.body.comment;
-};
-
-describe("Permisos admin y moderación", () => {
-  test("DELETE /api/posts/:id debe permitir que admin elimine un posteo ajeno", async () => {
-    const tokenUsuario = await crearUsuarioYObtenerToken({
+describe("Permisos admin y moderación", function () {
+  it("DELETE /api/posts/:id debe permitir que admin elimine un posteo ajeno", async function () {
+    const { token: tokenUsuario } = await registerUser({
       nombre: "Usuario Dueño Post",
       email: "duenio-post@test.com",
-      password: "123456",
     });
 
-    const tokenAdmin = await crearAdminYObtenerToken();
+    const { token: tokenAdmin } = await createAdminAndToken();
 
-    const postId = await crearPostYObtenerId(tokenUsuario);
+    const { post } = await createPost(tokenUsuario, {
+      titulo: "Posteo para permisos admin",
+      contenido: "Este posteo se usa para probar permisos de administrador.",
+    });
 
     const response = await request(app)
-      .delete(`/api/posts/${postId}`)
+      .delete(`/api/posts/${post._id}`)
       .set("Authorization", `Bearer ${tokenAdmin}`);
 
-    expect(response.statusCode).toBe(200);
-    expect(response.body).toHaveProperty(
+    expect(response.status).to.equal(200);
+    expect(response.body).to.have.property(
       "message",
       "Posteo eliminado correctamente"
     );
 
-    const postEliminado = await request(app).get(`/api/posts/${postId}`);
+    const postEliminado = await request(app).get(`/api/posts/${post._id}`);
 
-    expect(postEliminado.statusCode).toBe(404);
+    expect(postEliminado.status).to.equal(404);
   });
 
-  test("PUT /api/posts/:id debe bloquear edición de posteo ajeno aunque el usuario sea admin", async () => {
-    const tokenUsuario = await crearUsuarioYObtenerToken({
+  it("PUT /api/posts/:id debe bloquear edición de posteo ajeno aunque el usuario sea admin", async function () {
+    const { token: tokenUsuario } = await registerUser({
       nombre: "Usuario Autor Post",
       email: "autor-post@test.com",
-      password: "123456",
     });
 
-    const tokenAdmin = await crearAdminYObtenerToken();
+    const { token: tokenAdmin } = await createAdminAndToken();
 
-    const postId = await crearPostYObtenerId(tokenUsuario);
+    const { post } = await createPost(tokenUsuario, {
+      titulo: "Posteo original",
+      contenido: "Este contenido pertenece al autor original.",
+    });
 
     const response = await request(app)
-      .put(`/api/posts/${postId}`)
+      .put(`/api/posts/${post._id}`)
       .set("Authorization", `Bearer ${tokenAdmin}`)
       .send({
         titulo: "Título editado por admin",
         contenido: "Este contenido no debería poder modificarlo un admin.",
       });
 
-    expect(response.statusCode).toBe(403);
-    expect(response.body).toHaveProperty("message");
+    expect(response.status).to.equal(403);
+    expect(response.body).to.have.property("message");
   });
 
-  test("DELETE /api/posts/:id debe eliminar también los comentarios asociados al posteo", async () => {
-    const tokenUsuario = await crearUsuarioYObtenerToken({
+  it("DELETE /api/posts/:id debe eliminar también los comentarios asociados al posteo", async function () {
+    const { token: tokenUsuario } = await registerUser({
       nombre: "Usuario Con Comentarios",
       email: "usuario-con-comentarios@test.com",
-      password: "123456",
     });
 
-    const tokenAdmin = await crearAdminYObtenerToken();
+    const { token: tokenAdmin } = await createAdminAndToken();
 
-    const postId = await crearPostYObtenerId(tokenUsuario);
+    const { post } = await createPost(tokenUsuario, {
+      titulo: "Posteo con comentarios",
+      contenido: "Este posteo tiene comentarios asociados.",
+    });
 
-    await crearComentario(tokenUsuario, postId);
+    await createComment(tokenUsuario, post._id, {
+      contenido: "Comentario asociado al posteo.",
+    });
 
-    const comentariosAntes = await Comment.find({ post: postId });
-    expect(comentariosAntes.length).toBe(1);
+    const comentariosAntes = await Comment.find({ post: post._id });
+    expect(comentariosAntes).to.have.lengthOf(1);
 
     const response = await request(app)
-      .delete(`/api/posts/${postId}`)
+      .delete(`/api/posts/${post._id}`)
       .set("Authorization", `Bearer ${tokenAdmin}`);
 
-    expect(response.statusCode).toBe(200);
+    expect(response.status).to.equal(200);
 
-    const comentariosDespues = await Comment.find({ post: postId });
-    expect(comentariosDespues.length).toBe(0);
+    const comentariosDespues = await Comment.find({ post: post._id });
+    expect(comentariosDespues).to.have.lengthOf(0);
   });
 
-  test("DELETE /api/comments/:id debe permitir que admin elimine un comentario ajeno", async () => {
-    const tokenUsuario = await crearUsuarioYObtenerToken({
+  it("DELETE /api/comments/:id debe permitir que admin elimine un comentario ajeno", async function () {
+    const { token: tokenUsuario } = await registerUser({
       nombre: "Usuario Comentado Admin",
       email: "usuario-comentado-admin@test.com",
-      password: "123456",
     });
 
-    const tokenAdmin = await crearAdminYObtenerToken();
+    const { token: tokenAdmin } = await createAdminAndToken();
 
-    const postId = await crearPostYObtenerId(tokenUsuario);
-
-    const comentarioCreado = await crearComentario(
-      tokenUsuario,
-      postId,
-      "Comentario que será eliminado por admin."
-    );
-
-    const commentId = comentarioCreado._id;
+    const { post } = await createPost(tokenUsuario);
+    const { comment } = await createComment(tokenUsuario, post._id, {
+      contenido: "Comentario que será eliminado por admin.",
+    });
 
     const response = await request(app)
-      .delete(`/api/comments/${commentId}`)
+      .delete(`/api/comments/${comment._id}`)
       .set("Authorization", `Bearer ${tokenAdmin}`);
 
-    expect(response.statusCode).toBe(200);
-    expect(response.body).toHaveProperty(
+    expect(response.status).to.equal(200);
+    expect(response.body).to.have.property(
       "message",
       "Comentario eliminado correctamente"
     );
 
     const comentariosDelPost = await request(app).get(
-      `/api/posts/${postId}/comments`
+      `/api/posts/${post._id}/comments`
     );
 
-    expect(comentariosDelPost.body.comments.length).toBe(0);
+    expect(comentariosDelPost.body.comments).to.have.lengthOf(0);
   });
 
-  test("PUT /api/comments/:id debe bloquear edición de comentario ajeno aunque el usuario sea admin", async () => {
-    const tokenUsuario = await crearUsuarioYObtenerToken({
+  it("PUT /api/comments/:id debe bloquear edición de comentario ajeno aunque el usuario sea admin", async function () {
+    const { token: tokenUsuario } = await registerUser({
       nombre: "Usuario Comentario Protegido",
       email: "usuario-comentario-protegido@test.com",
-      password: "123456",
     });
 
-    const tokenAdmin = await crearAdminYObtenerToken();
+    const { token: tokenAdmin } = await createAdminAndToken();
 
-    const postId = await crearPostYObtenerId(tokenUsuario);
-
-    const comentarioCreado = await crearComentario(
-      tokenUsuario,
-      postId,
-      "Comentario que el admin no debería editar."
-    );
-
-    const commentId = comentarioCreado._id;
+    const { post } = await createPost(tokenUsuario);
+    const { comment } = await createComment(tokenUsuario, post._id, {
+      contenido: "Comentario que el admin no debería editar.",
+    });
 
     const response = await request(app)
-      .put(`/api/comments/${commentId}`)
+      .put(`/api/comments/${comment._id}`)
       .set("Authorization", `Bearer ${tokenAdmin}`)
       .send({
         contenido: "Intento de edición por admin.",
       });
 
-    expect(response.statusCode).toBe(403);
-    expect(response.body).toHaveProperty("message");
+    expect(response.status).to.equal(403);
+    expect(response.body).to.have.property("message");
   });
 });
