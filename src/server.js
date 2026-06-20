@@ -1,5 +1,10 @@
 require("dotenv").config();
 
+//  // --- SOLUCIÓN DNS ---
+//  const dns = require("dns");
+//  dns.setServers(["1.1.1.1", "8.8.8.8"]); // Fuerza a Node a usar Cloudflare y Google
+//  // --------------------
+
 const http = require("http");
 const app = require("./app");
 const connectDB = require("./config/db");
