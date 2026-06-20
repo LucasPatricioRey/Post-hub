@@ -1,7 +1,7 @@
 const { Server } = require("socket.io");
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
-const ChatMessage = require("../models/ChatMessage");
+const chatService = require("../services/chat.service");
 
 const getTokenFromSocket = (socket) => {
   const authToken = socket.handshake.auth?.token;
@@ -62,37 +62,18 @@ const configureSockets = (server) => {
 
     socket.on("chat:sendMessage", async (data) => {
       try {
-        const contenido = data?.contenido?.trim();
-
-        if (!contenido) {
-          socket.emit("chat:error", {
-            message: "El mensaje no puede estar vacío",
-          });
-          return;
-        }
-
-        if (contenido.length > 300) {
-          socket.emit("chat:error", {
-            message: "El mensaje no puede superar los 300 caracteres",
-          });
-          return;
-        }
-
-        const savedMessage = await ChatMessage.create({
-          contenido,
-          autor: socket.user._id,
+        const populatedMessage = await chatService.createMessage({
+          contenido: data?.contenido,
+          autorId: socket.user._id,
           nombreAutor: socket.user.nombre,
         });
-
-        const populatedMessage = await savedMessage.populate(
-          "autor",
-          "nombre email rol"
-        );
 
         io.emit("chat:newMessage", populatedMessage);
       } catch (error) {
         socket.emit("chat:error", {
-          message: "No se pudo enviar el mensaje",
+          message: error.statusCode
+            ? error.message
+            : "No se pudo enviar el mensaje",
         });
       }
     });

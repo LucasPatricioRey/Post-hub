@@ -1,10 +1,7 @@
-const mongoose = require("mongoose");
 const PDFDocument = require("pdfkit");
-const Post = require("../models/Post");
-const Comment = require("../models/Comment");
 const asyncHandler = require("../utils/asyncHandler");
-const createError = require("../utils/createError");
 const getImageBufferFromUrl = require("../utils/getImageBufferFromUrl");
+const pdfService = require("../services/pdf.service");
 
 const formatDate = (date) => {
   return new Date(date).toLocaleString("es-AR", {
@@ -24,19 +21,7 @@ const sanitizeFileName = (fileName) => {
 const downloadPostPdf = asyncHandler(async (req, res) => {
   const { id } = req.params;
 
-  if (!mongoose.isValidObjectId(id)) {
-    throw createError("ID de posteo inválido", 400);
-  }
-
-  const post = await Post.findById(id).populate("autor", "nombre email rol");
-
-  if (!post) {
-    throw createError("Posteo no encontrado", 404);
-  }
-
-  const comments = await Comment.find({ post: post._id })
-    .populate("autor", "nombre email rol")
-    .sort({ createdAt: 1 });
+  const { post, comments } = await pdfService.getPostForExport(id);
 
   const fileName = sanitizeFileName(post.titulo) || "posthub-posteo";
 

@@ -1,34 +1,14 @@
-const User = require("../models/User");
-const generateToken = require("../utils/generateToken");
 const asyncHandler = require("../utils/asyncHandler");
-const createError = require("../utils/createError");
+const authService = require("../services/auth.service");
 
 const registerUser = asyncHandler(async (req, res) => {
   const { nombre, email, password } = req.body;
 
-  if (!nombre || !email || !password) {
-    throw createError("Nombre, email y contraseña son obligatorios", 400);
-  }
-
-  if (typeof password !== "string" || password.length < 6) {
-    throw createError("La contraseña debe tener al menos 6 caracteres", 400);
-  }
-
-  const emailNormalizado = email.toLowerCase().trim();
-
-  const userExists = await User.findOne({ email: emailNormalizado });
-
-  if (userExists) {
-    throw createError("Ya existe un usuario registrado con ese email", 400);
-  }
-
-  const user = await User.create({
+  const { user, token } = await authService.registerUser({
     nombre,
-    email: emailNormalizado,
+    email,
     password,
   });
-
-  const token = generateToken(user._id);
 
   res.status(201).json({
     message: "Usuario registrado correctamente",
@@ -46,27 +26,7 @@ const registerUser = asyncHandler(async (req, res) => {
 const loginUser = asyncHandler(async (req, res) => {
   const { email, password } = req.body;
 
-  if (!email || !password) {
-    throw createError("Email y contraseña son obligatorios", 400);
-  }
-
-  const emailNormalizado = email.toLowerCase().trim();
-
-  const user = await User.findOne({ email: emailNormalizado }).select(
-    "+password"
-  );
-
-  if (!user) {
-    throw createError("Credenciales inválidas", 401);
-  }
-
-  const passwordCorrecta = await user.matchPassword(password);
-
-  if (!passwordCorrecta) {
-    throw createError("Credenciales inválidas", 401);
-  }
-
-  const token = generateToken(user._id);
+  const { user, token } = await authService.loginUser({ email, password });
 
   res.status(200).json({
     message: "Login correcto",
